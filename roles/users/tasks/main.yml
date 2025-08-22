@@ -1,0 +1,16 @@
+- name: Ensure local user exists (non-admin)
+  ansible.windows.win_user:
+    name: "{{ target_username }}"
+    password: "{{ target_user_password }}"
+    password_never_expires: yes
+    state: present
+    groups:
+      - "Users"         # standard user
+    update_password: on_create
+
+- name: Ensure target user is NOT a local admin
+  ansible.windows.win_group_membership:
+    name: Administrators
+    members:
+      - "{{ target_username }}"
+    state: absent

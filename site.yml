@@ -1,0 +1,12 @@
+- name: Provision Windows NUC
+  hosts: nucs
+  gather_facts: no
+
+  roles:
+    - apps
+    - users
+    - hostname
+    - security
+    - updates
+#    - monitoring
+    - housekeeping

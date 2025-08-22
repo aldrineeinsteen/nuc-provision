@@ -1,0 +1,22 @@
+# App choices
+apps_to_install:
+  - name: firefox
+    choco: firefox
+  - name: thunderbird
+    choco: thunderbird
+  - name: vscode
+    choco: vscode
+  - name: python
+    choco: python
+  - name: java
+    choco: temurin17    # LTS JDK
+  - name: 7zip
+    choco: 7zip
+  - name: blender
+    choco: blender
+  - name: libreoffice   # Open-source Word & Excel equivalent
+    choco: libreoffice-fresh
+
+# Weekly reboot time (Sunday 03:00)
+reboot_day: Sunday
+reboot_time: '03:00'

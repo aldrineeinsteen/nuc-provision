@@ -1,0 +1,15 @@
+- name: Set hostname (NetBIOS)
+  ansible.windows.win_hostname:
+    name: "{{ pc_basename }}"
+  register: rename
+
+- name: Set primary DNS suffix to 'nuc' (for FQDN pc_basename.nuc)
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters
+    name: NV Domain
+    data: nuc
+    type: string
+
+- name: Reboot if required by rename
+  ansible.windows.win_reboot:
+  when: rename.reboot_required

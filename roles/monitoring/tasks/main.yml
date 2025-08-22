@@ -1,0 +1,20 @@
+- name: Download windows_exporter MSI
+  ansible.windows.win_get_url:
+    url: "https://github.com/prometheus-community/windows_exporter/releases/download/v{{ windows_exporter_version }}/windows_exporter-{{ windows_exporter_version }}-amd64.msi"
+    dest: "C:\\Temp\\windows_exporter.msi"
+
+- name: Install windows_exporter as service
+  ansible.windows.win_package:
+    path: "C:\\Temp\\windows_exporter.msi"
+    arguments: 'ENABLED_COLLECTORS=cpu,cs,logical_disk,net,os,process,system,textfile LISTEN_ADDR={{ monitoring_listen_addr }}:{{ monitoring_port }}'
+    state: present
+
+- name: Open firewall for monitoring port
+  community.windows.win_firewall_rule:
+    name: "windows_exporter"
+    localport: "{{ monitoring_port }}"
+    action: allow
+    direction: in
+    protocol: tcp
+    state: present
+    enabled: yes

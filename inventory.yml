@@ -1,0 +1,24 @@
+all:
+  vars:
+    ansible_connection: winrm
+    ansible_port: 5986
+    ansible_winrm_transport: ntlm
+    ansible_winrm_server_cert_validation: ignore
+    ansible_winrm_scheme: https
+    ansible_winrm_message_encryption: auto
+    ansible_winrm_read_timeout_sec: 600
+    ansible_winrm_operation_timeout_sec: 180
+    ansible_user: "{{ lookup('env','WIN_USERNAME') }}"
+    ansible_password: "{{ lookup('env','WIN_PASSWORD') }}"
+    # Parameterize per machine
+    target_username: "{{ lookup('env','TARGET_USERNAME') | default('chris') }}"
+    target_user_password: "{{ lookup('env','TARGET_USER_PASSWORD') }}"
+    pc_basename: "{{ lookup('env','PC_BASENAME') | default('CHRIS-NUC') }}"
+    monitoring_listen_addr: "{{ lookup('env','MON_LISTEN_ADDR') | default('0.0.0.0') }}"
+    monitoring_port: "{{ lookup('env','MON_PORT') | default('9182') }}"
+    windows_exporter_version: "{{ lookup('env','WIN_EXPORTER_VERSION') | default('0.25.1') }}"
+  children:
+    nucs:
+      hosts:
+        chris_nuc:
+          ansible_host: "{{ lookup('env','NUC1_ADDR') | default('') }}"

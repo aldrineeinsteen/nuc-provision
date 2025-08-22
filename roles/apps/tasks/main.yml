@@ -1,0 +1,11 @@
+- name: Ensure Chocolatey is installed
+  chocolatey.chocolatey.win_chocolatey:
+    name: chocolatey
+    state: present
+
+- name: Install requested desktop apps
+  chocolatey.chocolatey.win_chocolatey:
+    name: "{{ item.choco }}"
+    state: latest
+    params: "--force"
+  loop: "{{ apps_to_install }}"

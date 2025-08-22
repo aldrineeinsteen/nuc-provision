@@ -1,0 +1,51 @@
+- name: Create weekly safe reboot (Sunday 03:30)
+  community.windows.win_scheduled_task:
+    name: WeeklySafeReboot
+    description: "Weekly safe reboot"
+    actions:
+      - path: C:\Windows\System32\shutdown.exe
+        arguments: "/r /t 0 /f"
+    triggers:
+      - type: weekly
+        start_boundary: "2025-01-01T{{ (reboot_time | default('03:00')) }}:00"
+        days_of_week: [ "{{ reboot_day | default('SUN') }}" ]
+    settings:
+      allow_start_on_demand: yes
+      start_when_available: yes
+      multiple_instances: parallel
+    state: present
+    enabled: yes
+
+- name: Set High performance power plan
+  ansible.windows.win_shell: |
+    powercfg /setactive SCHEME_MIN
+  changed_when: false
+
+- name: Disable standby (sleep) on AC/DC power
+  ansible.windows.win_shell: |
+    powercfg /change standby-timeout-ac 0
+    powercfg /change standby-timeout-dc 0
+  changed_when: false
+
+- name: Disable hibernation
+  ansible.windows.win_shell: |
+    powercfg /hibernate off
+  changed_when: false
+
+- name: Schedule Chocolatey upgrade-all weekly
+  community.windows.win_scheduled_task:
+    name: WeeklyChocoUpgrade
+    description: "Run choco upgrade all -y weekly"
+    actions:
+      - path: C:\ProgramData\chocolatey\choco.exe
+        arguments: "upgrade all -y"
+    triggers:
+      - type: weekly
+        start_boundary: "2025-01-01T04:00:00"
+        days_of_week: [ "Sunday" ]
+    settings:
+      allow_start_on_demand: yes
+      start_when_available: yes
+      multiple_instances: parallel
+    state: present
+    enabled: yes
