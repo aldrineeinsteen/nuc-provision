@@ -8,5 +8,5 @@
     - hostname
     - security
     - updates
-#    - monitoring
+    - monitoring
     - housekeeping

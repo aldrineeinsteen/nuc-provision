@@ -87,6 +87,9 @@ export TARGET_USERNAME='<username>'                      # standard user to crea
 export TARGET_USER_PASSWORD='<target-user-password>'
 export PC_BASENAME='<pc-name>'                      # hostname (no dots)
 export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES      # macOS fork-safety workaround
+export WIN_EXPORTER_VERSION=0.31.2      # to override the windows exporter version
+export MON_LISTEN_ADDR=0.0.0.0     # Monitoring IP (localhost/0.0.0.0)
+export MON_PORT=9182     # Monitoring port
 ```
 
 **Reference:**
@@ -100,6 +103,7 @@ export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES      # macOS fork-safety workarou
 | `TARGET_USER_PASSWORD` | Password for the local user |
 | `PC_BASENAME` | Computer name (short hostname) |
 | `OBJC_DISABLE_INITIALIZE_FORK_SAFETY` | Workaround for macOS fork-safety |
+| `WIN_EXPORTER_VERSION` | Override the windows exporter prometheus version |
 
 ---
 

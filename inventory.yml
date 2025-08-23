@@ -16,7 +16,7 @@ all:
     pc_basename: "{{ lookup('env','PC_BASENAME') | default('CHRIS-NUC') }}"
     monitoring_listen_addr: "{{ lookup('env','MON_LISTEN_ADDR') | default('0.0.0.0') }}"
     monitoring_port: "{{ lookup('env','MON_PORT') | default('9182') }}"
-    windows_exporter_version: "{{ lookup('env','WIN_EXPORTER_VERSION') | default('0.25.1') }}"
+    windows_exporter_version: "{{ lookup('env','WIN_EXPORTER_VERSION') | default('0.31.2') }}"
   children:
     nucs:
       hosts:
