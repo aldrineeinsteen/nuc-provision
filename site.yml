@@ -3,10 +3,19 @@
   gather_facts: no
 
   roles:
-    - apps
-    - users
-    - hostname
-    - security
-    - updates
-    - monitoring
-    - housekeeping
+    - role: apps
+      tags: [apps]
+    - role: users
+      tags: [users]
+    - role: hostname
+      tags: [hostname]
+    # - role: monitoring
+    #   tags: [monitoring]
+    - role: security
+      tags: [security]
+    - role: housekeeping
+      tags: [housekeeping]
+    - role: updates
+      tags: [updates]
+    # - role: monitoring-uninstall
+    #  tags: [monitoring-uninstall]

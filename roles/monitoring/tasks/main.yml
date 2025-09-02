@@ -1,25 +1,98 @@
- - name: Download windows_exporter MSI
-   ansible.windows.win_get_url:
-     url: "https://github.com/prometheus-community/windows_exporter/releases/download/v{{ windows_exporter_version }}/windows_exporter-{{ windows_exporter_version }}-amd64.msi"
-     dest: "%TEMP%\\windows_exporter.msi"
+- name: Stop windows_exporter service if present
+  ansible.windows.win_service:
+    name: windows_exporter
+    state: stopped
+  failed_when: false
 
- - name: Install windows_exporter as service
-   ansible.windows.win_package:
-     path: "%TEMP%\\windows_exporter.msi"
-     arguments: 'ENABLED_COLLECTORS=cpu,cs,logical_disk,net,os,process,system,textfile LISTEN_ADDR={{ monitoring_listen_addr }}:{{ monitoring_port }}'
-     state: present
+- name: Delete windows_exporter service if present
+  ansible.windows.win_shell: |
+    if (Get-Service -Name windows_exporter -ErrorAction SilentlyContinue) {
+      sc.exe delete windows_exporter
+    }
+  register: delete_svc
+  changed_when: delete_svc.stdout | default('') | select('search','DeleteService SUCCESS') | list | length > 0
+  failed_when: false
 
- - name: Delete windows_exporter MSI after installation
-   ansible.windows.win_file:
-     path: "%TEMP%\\windows_exporter.msi"
-     state: absent
+- name: Remove previous install directory (if any)
+  ansible.windows.win_file:
+    path: 'C:\\Program Files\\windows_exporter'
+    state: absent
 
- - name: Open firewall for monitoring port
-   community.windows.win_firewall_rule:
-     name: "windows_exporter"
-     localport: "{{ monitoring_port }}"
-     action: allow
-     direction: in
-     protocol: tcp
-     state: present
-     enabled: yes
+- name: Ensure C:\\Windows\\Temp exists for downloads
+  ansible.windows.win_file:
+    path: C:\\Windows\\Temp
+    state: directory
+
+- name: Download windows_exporter MSI
+  ansible.windows.win_get_url:
+    url: "https://github.com/prometheus-community/windows_exporter/releases/download/v{{ windows_exporter_version }}/windows_exporter-{{ windows_exporter_version }}-amd64.msi"
+    dest: "C:\\Windows\\Temp\\windows_exporter.msi"
+
+- name: Install windows_exporter via MSI (no args)
+  ansible.windows.win_package:
+    path: "C:\\Windows\\Temp\\windows_exporter.msi"
+    state: present
+
+- name: Delete windows_exporter MSI after installation
+  ansible.windows.win_file:
+    path: "C:\\Windows\\Temp\\windows_exporter.msi"
+    state: absent
+
+- name: Open firewall for monitoring port
+  community.windows.win_firewall_rule:
+    name: "windows_exporter"
+    localport: "{{ monitoring_port }}"
+    action: allow
+    direction: in
+    protocol: tcp
+    state: present
+    enabled: yes
+
+- name: Ensure exporter binary exists
+  ansible.windows.win_shell: |
+    if (Test-Path 'C:\\Program Files\\windows_exporter\\windows_exporter.exe') { 'OK' } else { 'MISSING' }
+  register: exporter_bin
+  changed_when: false
+
+- name: Create windows_exporter service if missing (with correct arguments)
+  ansible.windows.win_service:
+    name: windows_exporter
+    path: 'C:\\Program Files\\windows_exporter\\windows_exporter.exe'
+    arguments: '--web.listen-address={{ monitoring_listen_addr }}:{{ monitoring_port }} --collectors.enabled=cpu,cs,logical_disk,net,os,process,system,textfile'
+    start_mode: auto
+    state: started
+  when: exporter_bin.stdout == 'OK'
+
+- name: Fail early if exporter binary missing
+  ansible.builtin.fail:
+    msg: 'windows_exporter.exe not found at C:\\Program Files\\windows_exporter\\. MSI may have failed.'
+  when: exporter_bin.stdout != 'OK'
+
+- name: Start windows_exporter service
+  ansible.windows.win_service:
+    name: windows_exporter
+    start_mode: auto
+    state: restarted
+
+- name: Verify exporter /metrics locally
+  ansible.windows.win_shell: |
+    try {
+      (Invoke-WebRequest -Uri "http://localhost:{{ monitoring_port }}/metrics" -UseBasicParsing -TimeoutSec 8).StatusCode
+    } catch { $_.Exception.Message }
+  register: exporter_http_check
+  changed_when: false
+
+- name: Show exporter HTTP check result
+  ansible.builtin.debug:
+    var: exporter_http_check.stdout
+
+- name: Verify port is listening
+  ansible.windows.win_shell: |
+    Get-NetTCPConnection -LocalPort {{ monitoring_port }} -State Listen |
+      Select-Object -Property LocalAddress, LocalPort, OwningProcess
+  register: exporter_listen
+  changed_when: false
+
+- name: Show port listener status
+  ansible.builtin.debug:
+    var: exporter_listen.stdout

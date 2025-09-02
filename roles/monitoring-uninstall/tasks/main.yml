@@ -1,0 +1,35 @@
+- name: Stop windows_exporter service if present
+  ansible.windows.win_service:
+    name: windows_exporter
+    state: stopped
+  failed_when: false
+
+- name: Delete windows_exporter service if present
+  ansible.windows.win_shell: |
+    if (Get-Service -Name windows_exporter -ErrorAction SilentlyContinue) {
+      sc.exe delete windows_exporter
+    }
+  failed_when: false
+
+- name: Uninstall windows_exporter MSI if installed
+  ansible.windows.win_package:
+    product_id: "windows_exporter"   # fallback to package_name if needed
+    state: absent
+  failed_when: false
+
+# Alternative if product_id not found (uses the MSI path):
+# - name: Uninstall via MSI file directly
+#   ansible.windows.win_package:
+#     path: "C:\\Windows\\Temp\\windows_exporter.msi"
+#     state: absent
+#   failed_when: false
+
+- name: Remove leftover install directory
+  ansible.windows.win_file:
+    path: 'C:\\Program Files\\windows_exporter'
+    state: absent
+
+- name: Remove firewall rule for exporter
+  community.windows.win_firewall_rule:
+    name: "windows_exporter"
+    state: absent
