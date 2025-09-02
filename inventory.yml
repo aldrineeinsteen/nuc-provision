@@ -20,5 +20,5 @@ all:
   children:
     nucs:
       hosts:
-        chris_nuc:
+        nuc:
           ansible_host: "{{ lookup('env','NUC1_ADDR') | default('') }}"
