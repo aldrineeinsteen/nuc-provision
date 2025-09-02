@@ -18,4 +18,4 @@
     - role: updates
       tags: [updates]
     # - role: monitoring-uninstall
-    #  tags: [monitoring-uninstall]
+    #   tags: [monitoring-uninstall]
