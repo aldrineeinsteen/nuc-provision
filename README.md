@@ -25,8 +25,19 @@ Before running Ansible from your controller (Mac/Linux), ensure the target NUC i
 
 1. **Enable WinRM service**
    ```powershell
+
+   Get-NetConnectionProfile | Format-Table Name, InterfaceAlias, NetworkCategory
+   Get-NetConnectionProfile |
+     Where-Object { $_.NetworkCategory -eq 'Public' -and $_.IPv4Connectivity -ne 'Disconnected' } |
+     ForEach-Object { Set-NetConnectionProfile -InterfaceIndex $_.InterfaceIndex -NetworkCategory Private }
+   
    winrm quickconfig -q
    Enable-PSRemoting -Force
+
+   Set-Service WinRM -StartupType Automatic
+   Restart-Service WinRM
+
+   winrm enumerate winrm/config/listener
    ```
 
 2. **Configure WinRM HTTPS listener**
@@ -54,7 +65,7 @@ Before running Ansible from your controller (Mac/Linux), ensure the target NUC i
    ```
    From your controller machine:
    ```bash
-   nc -vz 192.168.100.139 5986
+   nc -vz xxx.xxx.xxx.xxx 5986
    ```
 
 ---
