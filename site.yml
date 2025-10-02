@@ -13,6 +13,8 @@
     #   tags: [monitoring]
     - role: security
       tags: [security]
+    - role: parental-controls
+      tags: [parental-controls, safety]
     - role: housekeeping
       tags: [housekeeping]
     - role: updates

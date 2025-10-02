@@ -17,6 +17,9 @@ all:
     monitoring_listen_addr: "{{ lookup('env','MON_LISTEN_ADDR') | default('0.0.0.0') }}"
     monitoring_port: "{{ lookup('env','MON_PORT') | default('9182') }}"
     windows_exporter_version: "{{ lookup('env','WIN_EXPORTER_VERSION') | default('0.31.2') }}"
+    # DNS configuration (Pi-hole and backup)
+    primary_dns: "{{ lookup('env','PRIMARY_DNS') | default('192.168.99.100') }}"
+    secondary_dns: "{{ lookup('env','SECONDARY_DNS') | default('1.1.1.3') }}"
   children:
     nucs:
       hosts:

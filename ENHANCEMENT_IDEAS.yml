@@ -1,0 +1,64 @@
+# Enhanced Apps for Children - Add to group_vars/nucs.yml
+
+# Educational Software
+educational_apps:
+  - name: scratch
+    choco: scratch
+    description: "Visual programming for kids"
+  - name: krita
+    choco: krita
+    description: "Digital painting and art"
+  - name: geogebra
+    choco: geogebra
+    description: "Mathematics learning tool"
+  - name: audacity
+    choco: audacity
+    description: "Audio editing for podcasts"
+
+# Creative & STEM Tools
+creative_apps:
+  - name: obs-studio
+    choco: obs-studio
+    description: "Screen recording for tutorials"
+  - name: gimp
+    choco: gimp
+    description: "Image editing software"
+  - name: inkscape
+    choco: inkscape
+    description: "Vector graphics editor"
+
+# Parental Control Settings
+parental_controls:
+  # DNS filtering for family safety (using your Pi-hole)
+  family_dns_primary: "192.168.99.100"    # Your Pi-hole server
+  family_dns_secondary: "1.1.1.3"         # Cloudflare for Families (backup)
+  
+  # Time restrictions
+  school_nights_shutdown: "21:00"  # 9 PM on school nights
+  weekend_shutdown: "22:00"        # 10 PM on weekends
+  
+  # Usage monitoring
+  enable_activity_logging: true
+  log_web_activity: false  # Privacy consideration
+  
+# Content Filtering
+web_filtering:
+  block_categories:
+    - adult_content
+    - gambling
+    - violence
+    - drugs_alcohol
+  
+  allowed_sites:
+    - scratch.mit.edu
+    - code.org
+    - khanacademy.org
+    - nasa.gov
+    - nationalgeographic.com
+
+# Educational Resources (offline)
+offline_content:
+  download_wikipedia_for_schools: true
+  python_tutorials_path: "C:\\Educational\\Python"
+  math_resources_path: "C:\\Educational\\Math"
+  science_resources_path: "C:\\Educational\\Science"

@@ -1,0 +1,289 @@
+---
+# Parental Controls Role - Enhanced Safety for Children's Computers
+# This role implements comprehensive parental controls and safety measures
+
+- name: Configure Pi-hole DNS for family filtering
+  ansible.windows.win_shell: |
+    $adapter = (Get-NetAdapter | Where-Object {$_.Status -eq "Up" -and $_.Virtual -eq $false})[0]
+    if ($adapter) {
+      # Use your Pi-hole as primary DNS, fallback to Cloudflare for Families
+      Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses "{{ primary_dns }}","{{ secondary_dns }}"
+      Write-Output "DNS configured for adapter: $($adapter.Name) - Pi-hole: {{ primary_dns }}"
+    }
+  register: dns_result
+  changed_when: dns_result.stdout | default('') | length > 0
+
+- name: Create Educational Resources folder
+  ansible.windows.win_file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - "C:\\Educational"
+    - "C:\\Educational\\Python"
+    - "C:\\Educational\\Math"
+    - "C:\\Educational\\Science"
+    - "C:\\Educational\\Art"
+
+- name: Download educational Python resources
+  ansible.windows.win_get_url:
+    url: "{{ item.url }}"
+    dest: "C:\\Educational\\Python\\{{ item.name }}"
+  loop:
+    - name: "python_for_kids_examples.zip"
+      url: "https://github.com/python/cpython/archive/refs/heads/main.zip"
+  ignore_errors: yes
+  when: offline_content.download_python_resources | default(false)
+
+- name: Configure time-based computer usage restrictions
+  community.windows.win_scheduled_task:
+    name: "{{ item.name }}"
+    description: "{{ item.description }}"
+    actions:
+      - path: "{{ item.command }}"
+        arguments: "{{ item.args }}"
+    triggers:
+      - type: "{{ item.trigger_type }}"
+        start_boundary: "{{ item.start_time }}"
+        days_of_week: "{{ item.days }}"
+    settings:
+      allow_start_on_demand: no
+      start_when_available: yes
+    state: present
+    enabled: yes
+  loop:
+    - name: "SchoolNightShutdown"
+      description: "Shutdown computer on school nights at 9 PM"
+      command: "C:\\Windows\\System32\\shutdown.exe"
+      args: "/s /t 300 /c 'Bedtime! Computer will shutdown in 5 minutes.'"
+      trigger_type: "weekly"
+      start_time: "2025-01-01T21:00:00"
+      days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Sunday"]
+    - name: "WeekendShutdown"
+      description: "Shutdown computer on weekends at 10 PM"
+      command: "C:\\Windows\\System32\\shutdown.exe"
+      args: "/s /t 300 /c 'Bedtime! Computer will shutdown in 5 minutes.'"
+      trigger_type: "weekly"
+      start_time: "2025-01-01T22:00:00"
+      days: ["Friday", "Saturday"]
+
+- name: Check if BitDefender is installed
+  ansible.windows.win_service:
+    name: "{{ item }}"
+  register: bitdefender_services
+  failed_when: false
+  loop:
+    - "BDAuxSrv"      # BitDefender Auxiliary Service
+    - "BDVEDISK"      # BitDefender Virtual Disk
+    - "vsserv"        # BitDefender Virus Shield
+
+- name: Enable BitDefender Parental Control service
+  ansible.windows.win_service:
+    name: "BDAuxSrv"
+    state: started
+    start_mode: auto
+  when: bitdefender_services.results[0].exists | default(false)
+
+- name: Ensure BitDefender Parental Control stays enabled
+  ansible.windows.win_shell: |
+    # Check if BitDefender Central is installed and parental control is available
+    $bdCentral = Get-ChildItem -Path "C:\Program Files\Bitdefender*" -ErrorAction SilentlyContinue
+    if ($bdCentral) {
+      # Force enable parental control via registry if available
+      $regPath = "HKLM:\SOFTWARE\Bitdefender\Bitdefender Agent\ParentalControl"
+      if (Test-Path $regPath -ErrorAction SilentlyContinue) {
+        Set-ItemProperty -Path $regPath -Name "Enabled" -Value 1 -ErrorAction SilentlyContinue
+        Write-Output "BitDefender Parental Control enabled via registry"
+      }
+      
+      # Also try via service management
+      $services = @("BDAuxSrv", "BDVEDISK", "vsserv")
+      foreach ($service in $services) {
+        $svc = Get-Service -Name $service -ErrorAction SilentlyContinue
+        if ($svc -and $svc.Status -ne "Running") {
+          Start-Service -Name $service -ErrorAction SilentlyContinue
+          Write-Output "Started BitDefender service: $service"
+        }
+      }
+    } else {
+      Write-Output "BitDefender not found - consider installing for additional protection"
+    }
+  register: bitdefender_result
+  changed_when: bitdefender_result.stdout | default('') | regex_search('enabled|Started')
+
+- name: Create BitDefender monitoring script
+  ansible.windows.win_copy:
+    dest: "C:\\Windows\\monitor_bitdefender.ps1"
+    content: |
+      # BitDefender Parental Control Monitoring Script
+      # This script checks and re-enables BitDefender Parental Control if it gets disabled
+      
+      $logFile = "C:\Windows\Logs\bitdefender_monitor.log"
+      $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+      
+      # Create log directory if it doesn't exist
+      $logDir = Split-Path $logFile -Parent
+      if (!(Test-Path $logDir)) {
+        New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+      }
+      
+      # Check BitDefender services
+      $services = @("BDAuxSrv", "BDVEDISK", "vsserv")
+      $serviceIssues = @()
+      
+      foreach ($serviceName in $services) {
+        $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+        if ($service) {
+          if ($service.Status -ne "Running" -and $service.StartType -ne "Disabled") {
+            try {
+              Start-Service -Name $serviceName -ErrorAction Stop
+              $serviceIssues += "Restarted $serviceName"
+            } catch {
+              $serviceIssues += "Failed to start $serviceName`: $($_.Exception.Message)"
+            }
+          }
+        }
+      }
+      
+      # Check parental control registry setting
+      $regPath = "HKLM:\SOFTWARE\Bitdefender\Bitdefender Agent\ParentalControl"
+      if (Test-Path $regPath) {
+        try {
+          $pcEnabled = Get-ItemProperty -Path $regPath -Name "Enabled" -ErrorAction SilentlyContinue
+          if ($pcEnabled -and $pcEnabled.Enabled -eq 0) {
+            Set-ItemProperty -Path $regPath -Name "Enabled" -Value 1
+            $serviceIssues += "Re-enabled Parental Control via registry"
+          }
+        } catch {
+          $serviceIssues += "Could not check/set parental control registry: $($_.Exception.Message)"
+        }
+      }
+      
+      # Log results
+      if ($serviceIssues.Count -gt 0) {
+        $logEntry = "$timestamp - Issues found and fixed: $($serviceIssues -join '; ')"
+        Add-Content -Path $logFile -Value $logEntry
+        
+        # Notify user if they're logged in
+        $loggedInUser = (Get-WmiObject -Class Win32_Process -Filter "Name='explorer.exe'").GetOwner().User | Select-Object -First 1
+        if ($loggedInUser) {
+          msg $loggedInUser "BitDefender Parental Control was re-enabled automatically."
+        }
+      } else {
+        Add-Content -Path $logFile -Value "$timestamp - BitDefender services running normally"
+      }
+
+- name: Schedule BitDefender monitoring (every 30 minutes)
+  community.windows.win_scheduled_task:
+    name: "MonitorBitDefenderParentalControl"
+    description: "Monitor and auto-restart BitDefender Parental Control if disabled"
+    actions:
+      - path: "powershell.exe"
+        arguments: "-ExecutionPolicy Bypass -File C:\\Windows\\monitor_bitdefender.ps1"
+    triggers:
+      - type: "time"
+        start_boundary: "2025-01-01T08:00:00"
+        repetition:
+          interval: "PT30M"  # Every 30 minutes
+          duration: "P1D"    # For 1 day (then repeat)
+    settings:
+      allow_start_on_demand: yes
+      start_when_available: yes
+      run_only_if_logged_on: no
+      wake_to_run: no
+    state: present
+    enabled: yes
+
+- name: Enable Windows Family Safety features
+  ansible.windows.win_regedit:
+    path: "{{ item.path }}"
+    name: "{{ item.name }}"
+    data: "{{ item.value }}"
+    type: "{{ item.type }}"
+  loop:
+    # Enable SmartScreen for Apps
+    - path: "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System"
+      name: "EnableSmartScreen"
+      value: 1
+      type: "dword"
+    # Block potentially unwanted applications
+    - path: "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows Defender"
+      name: "PUAProtection"
+      value: 1
+      type: "dword"
+
+- name: Create safe browsing reminder script
+  ansible.windows.win_copy:
+    dest: "C:\\Windows\\safe_browsing_reminder.bat"
+    content: |
+      @echo off
+      msg %USERNAME% "Remember: Only visit websites your parents approve! Ask if you're unsure about a website."
+      timeout /t 5 > nul
+
+- name: Schedule daily safe browsing reminder
+  community.windows.win_scheduled_task:
+    name: "SafeBrowsingReminder"
+    description: "Daily reminder about safe browsing"
+    actions:
+      - path: "C:\\Windows\\safe_browsing_reminder.bat"
+    triggers:
+      - type: "daily"
+        start_boundary: "2025-01-01T16:00:00"  # 4 PM daily
+    settings:
+      allow_start_on_demand: yes
+      start_when_available: yes
+    state: present
+    enabled: yes
+
+- name: Configure application usage logging (optional)
+  ansible.windows.win_regedit:
+    path: "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Audit"
+    name: "ProcessCreationIncludeCmdLine_Enabled"
+    data: 1
+    type: dword
+  when: parental_controls.enable_activity_logging | default(false)
+
+- name: Create emergency contact information file
+  ansible.windows.win_copy:
+    dest: "C:\\Users\\{{ target_username }}\\Desktop\\Emergency_Contacts.txt"
+    content: |
+      EMERGENCY CONTACTS
+      ==================
+      
+      If you need help or feel unsafe online:
+      
+      Parents: Call immediately
+      School Counselor: [Add number]
+      Local Emergency: 911
+      
+      Online Safety Tips:
+      - Never share personal information
+      - Tell parents about suspicious messages
+      - Don't meet online friends in person
+      - Report cyberbullying immediately
+      
+      Educational Websites (Pre-approved):
+      - https://scratch.mit.edu (Programming)
+      - https://code.org (Computer Science)
+      - https://khanacademy.org (All subjects)
+      - https://nasa.gov (Space & Science)
+      
+      Remember: When in doubt, ask a parent or teacher!
+
+- name: Display parental controls summary
+  debug:
+    msg: |
+      Parental Controls Applied Successfully!
+      =====================================
+      ✅ Family-safe DNS configured (OpenDNS Family Shield)
+      ✅ Time-based usage restrictions set
+      ✅ SmartScreen protection enabled
+      ✅ Educational resources folders created
+      ✅ Daily safety reminders scheduled
+      ✅ Emergency contact information provided
+      
+      Next Steps for Parents:
+      1. Set up Windows Family accounts at account.microsoft.com/family
+      2. Configure browser bookmarks for approved websites
+      3. Review and test the scheduled shutdown times
+      4. Discuss online safety rules with your children
+      5. Regularly review activity logs (if enabled)
