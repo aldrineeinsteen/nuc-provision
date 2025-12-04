@@ -25,10 +25,15 @@ Please ensure:
 
 ### 🛡️ Security & Safety
 - **Software Restriction Policy (SRP)**: Prevents installation of unauthorized software
+- **Bloatware removal**: Automatically removes unwanted pre-installed software
+- **Gaming software blocking**: Prevents installation of Roblox, gaming platforms, etc.
+- **Microsoft Store restrictions**: Blocks app installation for standard users
+- **Firefox lockdown**: Prevents extension installation and modifications
 - **Non-admin user accounts**: Standard user privileges for daily use
 - **Family Safety policies**: Age-appropriate content filtering
 - **SmartScreen protection**: Warns against malicious downloads
 - **Secure software installation**: Only from trusted sources (Chocolatey)
+- **Daily monitoring**: Automatic detection and removal of unauthorized software
 
 ### 📱 Applications & Learning
 - **Educational software**: Firefox, LibreOffice, Python, Java, VS Code
@@ -180,13 +185,25 @@ ansible-playbook -i inventory.yml site.yml --tags housekeeping
 
 # Install system updates only
 ansible-playbook -i inventory.yml site.yml --tags updates
+
+# Remove bloatware and block unauthorized software
+ansible-playbook -i inventory.yml site.yml --tags bloatware
+
+# Lock down Firefox browser
+ansible-playbook -i inventory.yml site.yml --tags firefox
+
+# Set up parental controls
+ansible-playbook -i inventory.yml site.yml --tags parental-controls
 ```
 
 **Available roles:**
 - `apps`: Install educational and productivity software
+- `bloatware-removal`: Remove unwanted software and prevent unauthorized installations
 - `users`: Create and configure user accounts
 - `hostname`: Set computer name
 - `security`: Apply security policies and restrictions
+- `firefox-lockdown`: Lock down Firefox browser and remove all extensions
+- `parental-controls`: Configure Pi-hole DNS, BitDefender monitoring, and time restrictions
 - `housekeeping`: Configure automated maintenance
 - `updates`: Install Windows updates
 - `monitoring`: Set up Prometheus monitoring (commented out by default)
@@ -240,6 +257,45 @@ Get-Service BDAuxSrv, BDVEDISK, vsserv
 # Manually re-enable if needed (run as admin)
 Start-Service BDAuxSrv
 ```
+
+### 🦊 Firefox Lockdown
+Complete browser protection to prevent unauthorized modifications:
+- **Extension installation blocked**: Users cannot add or install any Firefox extensions
+- **All existing extensions removed**: Cleans out any previously installed add-ons
+- **Developer tools disabled**: Prevents access to about:config and debugging tools
+- **Add-ons page blocked**: about:addons is inaccessible
+- **Enterprise policies enforced**: Locks down via Mozilla's enterprise policy framework
+
+**What's locked:**
+- ❌ Cannot install extensions/add-ons
+- ❌ Cannot access about:config
+- ❌ Cannot use developer tools
+- ❌ Cannot access about:addons
+- ❌ Cannot modify browser settings
+- ✅ Can still browse websites normally
+- ✅ Can use bookmarks and history
+- ✅ Can save passwords
+
+### 🚫 Bloatware & Unauthorized Software Protection
+Comprehensive software restrictions:
+
+**Automatically removed:**
+- Roblox Studio and Roblox Player
+- Candy Crush and gaming apps
+- Xbox gaming apps
+- Unwanted pre-installed Windows Store apps
+- Other bloatware and trial software
+
+**Installation prevention:**
+- Microsoft Store disabled for standard users
+- Executable files blocked in Downloads folder
+- Software Restriction Policy (SRP) prevents unauthorized installations
+- Daily monitoring removes any newly installed unauthorized software
+
+**Monitoring:**
+- Runs daily at noon to check for unauthorized software
+- Logs all actions to `C:\Windows\Logs\bloatware_monitor.log`
+- Automatically removes detected unauthorized applications
 
 ## Additional Features for Children's Safety & Education
 
@@ -328,6 +384,36 @@ ansible nucs -i inventory.yml -m ansible.windows.win_shell -a "choco list --loca
 ```bash
 # Check SRP status
 ansible nucs -i inventory.yml -m ansible.windows.win_shell -a "gpresult /r"
+```
+
+**Firefox Extensions Not Blocked:**
+```powershell
+# Verify Firefox policies are in place
+Test-Path "C:\Program Files\Mozilla Firefox\distribution\policies.json"
+
+# Check if extensions folder was removed
+Get-ChildItem "C:\Users\*\AppData\Roaming\Mozilla\Firefox\Profiles\*\extensions" -ErrorAction SilentlyContinue
+```
+
+**Bloatware Reappears:**
+```powershell
+# Check monitoring logs
+Get-Content "C:\Windows\Logs\bloatware_monitor.log" -Tail 50
+
+# Manually trigger bloatware check
+powershell -ExecutionPolicy Bypass -File C:\Windows\monitor_bloatware.ps1
+
+# Check if task is running
+Get-ScheduledTask -TaskName "MonitorBloatware" | Select-Object TaskName, State, LastRunTime
+```
+
+**Roblox Still Installing:**
+```powershell
+# Check if Microsoft Store is properly disabled
+Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\WindowsStore" -Name "RemoveWindowsStore"
+
+# Verify SRP blocking rules
+Get-ChildItem "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers\262144\Paths"
 ```
 
 ## Contributing

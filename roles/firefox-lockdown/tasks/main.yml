@@ -1,0 +1,169 @@
+---
+# Firefox Lockdown Role - Prevent extension installation and remove existing extensions
+# This role locks down Firefox to prevent users from modifying settings or installing extensions
+
+- name: Create Firefox policies directory
+  ansible.windows.win_file:
+    path: "C:\\Program Files\\Mozilla Firefox\\distribution"
+    state: directory
+
+- name: Deploy Firefox enterprise policies (lock down extensions)
+  ansible.windows.win_copy:
+    dest: "C:\\Program Files\\Mozilla Firefox\\distribution\\policies.json"
+    content: |
+      {
+        "policies": {
+          "DisableAppUpdate": false,
+          "DisableBuiltinPDFViewer": false,
+          "DisableDefaultBrowserAgent": true,
+          "DisableDeveloperTools": true,
+          "DisableFeedbackCommands": true,
+          "DisableFirefoxStudies": true,
+          "DisableFormHistory": false,
+          "DisableMasterPasswordCreation": false,
+          "DisablePasswordReveal": true,
+          "DisablePrivateBrowsing": false,
+          "DisableProfileImport": true,
+          "DisableSetDesktopBackground": true,
+          "DisableTelemetry": true,
+          "DisplayBookmarksToolbar": true,
+          "DontCheckDefaultBrowser": true,
+          "BlockAboutConfig": true,
+          "BlockAboutSupport": true,
+          "BlockAboutAddons": true,
+          "ExtensionSettings": {
+            "*": {
+              "installation_mode": "blocked",
+              "blocked_install_message": "Extension installation is disabled by your administrator for safety."
+            }
+          },
+          "Preferences": {
+            "extensions.update.enabled": {
+              "Value": false,
+              "Status": "locked"
+            },
+            "xpinstall.enabled": {
+              "Value": false,
+              "Status": "locked"
+            },
+            "extensions.getAddons.showPane": {
+              "Value": false,
+              "Status": "locked"
+            }
+          },
+          "NoDefaultBookmarks": false,
+          "OfferToSaveLogins": true,
+          "PasswordManagerEnabled": true,
+          "PopupBlocking": {
+            "Default": true,
+            "Locked": true
+          },
+          "SearchBar": "unified"
+        }
+      }
+
+- name: Find all user Firefox profile directories
+  ansible.windows.win_shell: |
+    $profiles = @()
+    Get-ChildItem "C:\Users\*\AppData\Roaming\Mozilla\Firefox\Profiles" -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+      $profiles += $_.FullName
+    }
+    $profiles | ConvertTo-Json -Compress
+  register: firefox_profiles
+  changed_when: false
+
+- name: Remove all Firefox extensions from user profiles
+  ansible.windows.win_shell: |
+    $profilesJson = '{{ firefox_profiles.stdout | regex_replace('\n', '') }}'
+    if ($profilesJson -and $profilesJson -ne '[]') {
+      $profiles = $profilesJson | ConvertFrom-Json
+      if ($profiles) {
+        foreach ($profile in $profiles) {
+          # Remove extensions folder
+          $extensionsPath = Join-Path $profile "extensions"
+          if (Test-Path $extensionsPath) {
+            Remove-Item -Path $extensionsPath -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Output "Removed extensions from: $profile"
+          }
+          
+          # Remove browser-extension-data
+          $extDataPath = Join-Path $profile "browser-extension-data"
+          if (Test-Path $extDataPath) {
+            Remove-Item -Path $extDataPath -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Output "Removed extension data from: $profile"
+          }
+          
+          # Clear extensions.json to remove extension references
+          $extJsonPath = Join-Path $profile "extensions.json"
+          if (Test-Path $extJsonPath) {
+            Remove-Item -Path $extJsonPath -Force -ErrorAction SilentlyContinue
+            Write-Output "Removed extensions.json from: $profile"
+          }
+        }
+      }
+    } else {
+      Write-Output "No Firefox profiles found"
+    }
+  register: remove_extensions
+  changed_when: remove_extensions.stdout | default('') | regex_search('Removed')
+
+- name: Lock Firefox preferences via user.js (additional protection)
+  ansible.windows.win_shell: |
+    $profilesJson = '{{ firefox_profiles.stdout | regex_replace('\n', '') }}'
+    if ($profilesJson -and $profilesJson -ne '[]') {
+      $profiles = $profilesJson | ConvertFrom-Json
+      if ($profiles) {
+        $userJsContent = "// Firefox User Preferences - Locked by Administrator`n"
+        $userJsContent += "user_pref(`"xpinstall.enabled`", false);`n"
+        $userJsContent += "user_pref(`"extensions.update.enabled`", false);`n"
+        $userJsContent += "user_pref(`"extensions.getAddons.showPane`", false);`n"
+        $userJsContent += "user_pref(`"extensions.install.requireSecureOrigin`", true);`n"
+        $userJsContent += "user_pref(`"extensions.webextensions.restrictedDomains`", `"`");`n"
+        
+        foreach ($profile in $profiles) {
+          $userJsPath = Join-Path $profile "user.js"
+          Set-Content -Path $userJsPath -Value $userJsContent -Force -ErrorAction SilentlyContinue
+          Write-Output "Created user.js in: $profile"
+        }
+      }
+    }
+  register: user_js_result
+  changed_when: user_js_result.stdout | default('') | regex_search('Created')
+
+- name: Set registry to prevent Firefox profile customization
+  ansible.windows.win_regedit:
+    path: "HKLM:\\SOFTWARE\\Policies\\Mozilla\\Firefox"
+    name: "{{ item.name }}"
+    data: "{{ item.value }}"
+    type: "{{ item.type }}"
+  loop:
+    - name: "BlockAboutAddons"
+      value: 1
+      type: "dword"
+    - name: "BlockAboutConfig"
+      value: 1
+      type: "dword"
+    - name: "DisableAppUpdate"
+      value: 0
+      type: "dword"
+    - name: "DisableDeveloperTools"
+      value: 1
+      type: "dword"
+
+- name: Display Firefox lockdown summary
+  debug:
+    msg: |
+      Firefox Lockdown Applied Successfully!
+      =====================================
+      ✅ Extension installation blocked
+      ✅ All existing extensions removed
+      ✅ Developer tools disabled
+      ✅ About:addons page blocked
+      ✅ About:config page blocked
+      ✅ User preferences locked
+      
+      Users will no longer be able to:
+      - Install or enable Firefox extensions
+      - Access the add-ons manager
+      - Modify advanced preferences
+      - Use developer tools

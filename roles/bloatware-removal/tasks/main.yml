@@ -1,0 +1,309 @@
+---
+# Bloatware Removal & Software Restriction Role
+# This role removes unwanted pre-installed software and prevents unauthorized installations
+
+- name: Uninstall common bloatware via Chocolatey
+  chocolatey.chocolatey.win_chocolatey:
+    name: "{{ item }}"
+    state: absent
+  loop:
+    - robloxstudio
+    - roblox-player
+    - candy-crush
+    - minecraft-launcher
+    - epicgameslauncher
+    - steam
+  ignore_errors: yes
+
+- name: Remove bloatware Windows Store apps
+  ansible.windows.win_shell: |
+    # List of bloatware to remove
+    $bloatware = @(
+      "Microsoft.BingNews",
+      "Microsoft.BingWeather",
+      "Microsoft.GetHelp",
+      "Microsoft.Getstarted",
+      "Microsoft.Messaging",
+      "Microsoft.Microsoft3DViewer",
+      "Microsoft.MicrosoftOfficeHub",
+      "Microsoft.MicrosoftSolitaireCollection",
+      "Microsoft.MixedReality.Portal",
+      "Microsoft.Office.OneNote",
+      "Microsoft.People",
+      "Microsoft.Print3D",
+      "Microsoft.SkypeApp",
+      "Microsoft.Wallet",
+      "Microsoft.WindowsAlarms",
+      "Microsoft.WindowsFeedbackHub",
+      "Microsoft.WindowsMaps",
+      "Microsoft.Xbox.TCUI",
+      "Microsoft.XboxApp",
+      "Microsoft.XboxGameOverlay",
+      "Microsoft.XboxGamingOverlay",
+      "Microsoft.XboxIdentityProvider",
+      "Microsoft.XboxSpeechToTextOverlay",
+      "Microsoft.YourPhone",
+      "Microsoft.ZuneMusic",
+      "Microsoft.ZuneVideo",
+      "king.com.CandyCrushSaga",
+      "king.com.CandyCrushSodaSaga",
+      "RobloxCorporation.RobloxStudio",
+      "RobloxCorporation.Roblox"
+    )
+    
+    $removed = @()
+    foreach ($app in $bloatware) {
+      $package = Get-AppxPackage -Name $app -ErrorAction SilentlyContinue
+      if ($package) {
+        try {
+          Remove-AppxPackage -Package $package.PackageFullName -ErrorAction Stop
+          $removed += $app
+        } catch {
+          Write-Output "Failed to remove $app`: $($_.Exception.Message)"
+        }
+      }
+      
+      # Also remove provisioned packages (prevents reinstall for new users)
+      $provisionedPkg = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq $app } -ErrorAction SilentlyContinue
+      if ($provisionedPkg) {
+        try {
+          Remove-AppxProvisionedPackage -Online -PackageName $provisionedPkg.PackageName -ErrorAction Stop
+          $removed += "$app (provisioned)"
+        } catch {
+          Write-Output "Failed to remove provisioned $app`: $($_.Exception.Message)"
+        }
+      }
+    }
+    
+    if ($removed.Count -gt 0) {
+      Write-Output "Removed apps: $($removed -join ', ')"
+    } else {
+      Write-Output "No bloatware found to remove"
+    }
+  register: bloatware_removal
+  changed_when: bloatware_removal.stdout | default('') | regex_search('Removed apps')
+
+- name: Uninstall Roblox Studio and Player via registry/filesystem
+  ansible.windows.win_shell: |
+    $removed = @()
+    
+    # Find and uninstall Roblox Studio
+    $robloxPaths = @(
+      "$env:LOCALAPPDATA\Roblox",
+      "$env:ProgramFiles\Roblox",
+      "$env:ProgramFiles(x86)\Roblox"
+    )
+    
+    foreach ($path in $robloxPaths) {
+      if (Test-Path $path) {
+        # Try to run uninstaller if it exists
+        $uninstallers = Get-ChildItem -Path $path -Filter "RobloxStudio*.exe" -Recurse -ErrorAction SilentlyContinue
+        foreach ($uninstaller in $uninstallers) {
+          if ($uninstaller.Name -like "*uninstall*") {
+            Start-Process -FilePath $uninstaller.FullName -ArgumentList "/S" -Wait -NoNewWindow -ErrorAction SilentlyContinue
+          }
+        }
+        
+        # Force remove directory
+        Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
+        $removed += $path
+      }
+    }
+    
+    # Remove Roblox from all user profiles
+    Get-ChildItem "C:\Users" -Directory | ForEach-Object {
+      $userRoblox = Join-Path $_.FullName "AppData\Local\Roblox"
+      if (Test-Path $userRoblox) {
+        Remove-Item -Path $userRoblox -Recurse -Force -ErrorAction SilentlyContinue
+        $removed += $userRoblox
+      }
+    }
+    
+    # Remove desktop shortcuts
+    Get-ChildItem "C:\Users\*\Desktop" -Filter "*Roblox*.lnk" -ErrorAction SilentlyContinue | Remove-Item -Force
+    Get-ChildItem "C:\Users\*\Desktop" -Filter "*Roblox*.url" -ErrorAction SilentlyContinue | Remove-Item -Force
+    
+    if ($removed.Count -gt 0) {
+      Write-Output "Removed Roblox from: $($removed -join ', ')"
+    } else {
+      Write-Output "No Roblox installation found"
+    }
+  register: roblox_removal
+  changed_when: roblox_removal.stdout | default('') | regex_search('Removed Roblox')
+
+- name: Block Microsoft Store app installation for standard users
+  ansible.windows.win_regedit:
+    path: "{{ item.path }}"
+    name: "{{ item.name }}"
+    data: "{{ item.value }}"
+    type: "{{ item.type }}"
+  loop:
+    # Disable Microsoft Store for standard users
+    - path: "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsStore"
+      name: "RemoveWindowsStore"
+      value: 1
+      type: "dword"
+    # Require private store only
+    - path: "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsStore"
+      name: "RequirePrivateStoreOnly"
+      value: 1
+      type: "dword"
+    # Disable automatic app updates
+    - path: "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsStore"
+      name: "AutoDownload"
+      value: 2
+      type: "dword"
+
+- name: Enhance Software Restriction Policy to block unauthorized installations
+  ansible.windows.win_shell: |
+    # Block common gaming/unauthorized software installation paths
+    $blockPaths = @(
+      "%LOCALAPPDATA%\Roblox\*",
+      "%LOCALAPPDATA%\RobloxStudio\*",
+      "%APPDATA%\Roblox\*",
+      "%USERPROFILE%\Downloads\*.exe",
+      "%TEMP%\*.exe",
+      "%TMP%\*.exe"
+    )
+    
+    $index = 100
+    foreach ($path in $blockPaths) {
+      $regPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers\262144\Paths\{BLOCK$index}"
+      
+      # Create the path key
+      if (!(Test-Path $regPath)) {
+        New-Item -Path $regPath -Force | Out-Null
+      }
+      
+      # Set the path to block
+      Set-ItemProperty -Path $regPath -Name "ItemData" -Value $path -Type String -ErrorAction SilentlyContinue
+      Set-ItemProperty -Path $regPath -Name "SaferFlags" -Value 0 -Type DWord -ErrorAction SilentlyContinue
+      Set-ItemProperty -Path $regPath -Name "Description" -Value "Block unauthorized software" -Type String -ErrorAction SilentlyContinue
+      
+      $index++
+    }
+    
+    Write-Output "Enhanced SRP rules to block unauthorized software paths"
+  register: srp_enhancement
+  changed_when: srp_enhancement.stdout | default('') | length > 0
+
+- name: Block executable downloads in common locations (via NTFS permissions)
+  ansible.windows.win_shell: |
+    # Get the target user
+    $targetUser = "{{ target_username }}"
+    
+    # Paths to restrict .exe execution
+    $restrictedPaths = @(
+      "C:\Users\$targetUser\Downloads",
+      "C:\Users\$targetUser\AppData\Local\Temp"
+    )
+    
+    foreach ($path in $restrictedPaths) {
+      if (Test-Path $path) {
+        # Note: This is informational - actual execution blocking is done via SRP
+        Write-Output "Path exists and will be restricted via SRP: $path"
+      }
+    }
+    
+    Write-Output "Download folder execution restrictions configured"
+  register: download_restrictions
+  changed_when: false
+
+- name: Create bloatware monitoring script
+  ansible.windows.win_copy:
+    dest: "C:\\Windows\\monitor_bloatware.ps1"
+    content: |
+      # Bloatware Monitoring Script
+      # Checks for and removes unauthorized software installations
+      
+      $logFile = "C:\Windows\Logs\bloatware_monitor.log"
+      $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+      
+      # Ensure log directory exists
+      $logDir = Split-Path $logFile -Parent
+      if (!(Test-Path $logDir)) {
+        New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+      }
+      
+      # List of unauthorized software to check
+      $unauthorizedApps = @(
+        "RobloxCorporation.*",
+        "king.com.Candy*",
+        "Microsoft.Xbox*",
+        "*Gaming*"
+      )
+      
+      $foundApps = @()
+      foreach ($appPattern in $unauthorizedApps) {
+        $apps = Get-AppxPackage -Name $appPattern -ErrorAction SilentlyContinue
+        if ($apps) {
+          foreach ($app in $apps) {
+            try {
+              Remove-AppxPackage -Package $app.PackageFullName -ErrorAction Stop
+              $foundApps += "Removed: $($app.Name)"
+            } catch {
+              $foundApps += "Failed to remove: $($app.Name)"
+            }
+          }
+        }
+      }
+      
+      # Check for Roblox in LocalAppData
+      $users = Get-ChildItem "C:\Users" -Directory
+      foreach ($user in $users) {
+        $robloxPath = Join-Path $user.FullName "AppData\Local\Roblox"
+        if (Test-Path $robloxPath) {
+          Remove-Item -Path $robloxPath -Recurse -Force -ErrorAction SilentlyContinue
+          $foundApps += "Removed Roblox from: $($user.Name)"
+        }
+      }
+      
+      # Log results
+      if ($foundApps.Count -gt 0) {
+        $logEntry = "$timestamp - Unauthorized software detected and removed: $($foundApps -join '; ')"
+        Add-Content -Path $logFile -Value $logEntry
+      } else {
+        Add-Content -Path $logFile -Value "$timestamp - No unauthorized software detected"
+      }
+
+- name: Schedule bloatware monitoring (daily)
+  community.windows.win_scheduled_task:
+    name: "MonitorBloatware"
+    description: "Daily check for and removal of unauthorized software"
+    actions:
+      - path: "powershell.exe"
+        arguments: "-ExecutionPolicy Bypass -File C:\\Windows\\monitor_bloatware.ps1"
+    triggers:
+      - type: "daily"
+        start_boundary: "2025-01-01T12:00:00"  # Run at noon daily
+    settings:
+      allow_start_on_demand: yes
+      start_when_available: yes
+      run_only_if_logged_on: no
+    state: present
+    enabled: yes
+
+- name: Display bloatware removal summary
+  debug:
+    msg: |
+      Bloatware Removal & Restrictions Applied!
+      ========================================
+      ✅ Common bloatware uninstalled
+      ✅ Roblox Studio and Player removed
+      ✅ Microsoft Store disabled for standard users
+      ✅ Software Restriction Policy enhanced
+      ✅ Download folder execution blocked
+      ✅ Daily monitoring scheduled
+      
+      Blocked Applications:
+      - Roblox Studio/Player
+      - Candy Crush games
+      - Xbox apps
+      - Other gaming platforms
+      
+      Users cannot:
+      - Install apps from Microsoft Store
+      - Run executables from Downloads folder
+      - Install unauthorized gaming software
+      
+      Daily monitoring will automatically remove any unauthorized software.

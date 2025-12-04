@@ -5,6 +5,8 @@
   roles:
     - role: apps
       tags: [apps]
+    - role: bloatware-removal
+      tags: [bloatware, cleanup, security]
     - role: users
       tags: [users]
     - role: hostname
@@ -13,6 +15,8 @@
     #   tags: [monitoring]
     - role: security
       tags: [security]
+    - role: firefox-lockdown
+      tags: [firefox, browser, security]
     - role: parental-controls
       tags: [parental-controls, safety]
     - role: housekeeping
