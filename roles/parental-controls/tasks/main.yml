@@ -108,7 +108,7 @@
       Write-Output "BitDefender not found - consider installing for additional protection"
     }
   register: bitdefender_result
-  changed_when: bitdefender_result.stdout | default('') | regex_search('enabled|Started')
+  changed_when: bitdefender_result.stdout | default('') | regex_search('enabled|Started') | bool
 
 - name: Create BitDefender monitoring script
   ansible.windows.win_copy:

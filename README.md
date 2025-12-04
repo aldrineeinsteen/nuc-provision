@@ -280,11 +280,15 @@ Complete browser protection to prevent unauthorized modifications:
 Comprehensive software restrictions:
 
 **Automatically removed:**
-- Roblox Studio and Roblox Player
-- Candy Crush and gaming apps
-- Xbox gaming apps
-- Unwanted pre-installed Windows Store apps
-- Other bloatware and trial software
+- **Roblox Studio and Roblox Player** (all installations and shortcuts)
+- **WhatsApp Desktop** (app, shortcuts, and all user data)
+- **bloxd.io** (PWA app, browser extensions, and shortcuts)
+- **Gaming browser extensions** (Chrome, Edge, Firefox)
+- **Candy Crush and gaming apps**
+- **Xbox gaming apps**
+- **Unwanted pre-installed Windows Store apps**
+- **Other bloatware and trial software**
+- **All desktop and Start Menu shortcuts** for blocked apps and games
 
 **Installation prevention:**
 - Microsoft Store disabled for standard users
@@ -292,10 +296,18 @@ Comprehensive software restrictions:
 - Software Restriction Policy (SRP) prevents unauthorized installations
 - Daily monitoring removes any newly installed unauthorized software
 
+**Website blocking (via hosts file):**
+- **Gaming sites**: bloxd.io, roblox.com, now.gg, krunker.io, poki.com, crazygames.com, miniclip.com, y8.com, friv.com, addictinggames.com
+- **Social media**: WhatsApp Web, TikTok, Instagram, Facebook, Messenger, Snapchat
+- Blocks are automatically maintained and restored if modified
+- DNS cache flushed automatically after changes
+
 **Monitoring:**
 - Runs daily at noon to check for unauthorized software
+- Verifies hosts file blocks are still in place
 - Logs all actions to `C:\Windows\Logs\bloatware_monitor.log`
 - Automatically removes detected unauthorized applications
+- Re-adds any removed hosts file entries
 
 ## Additional Features for Children's Safety & Education
 

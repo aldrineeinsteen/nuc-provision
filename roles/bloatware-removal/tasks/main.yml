@@ -13,6 +13,7 @@
     - minecraft-launcher
     - epicgameslauncher
     - steam
+    - whatsapp
   ignore_errors: yes
 
 - name: Remove bloatware Windows Store apps
@@ -48,7 +49,9 @@
       "king.com.CandyCrushSaga",
       "king.com.CandyCrushSodaSaga",
       "RobloxCorporation.RobloxStudio",
-      "RobloxCorporation.Roblox"
+      "RobloxCorporation.Roblox",
+      "5319275A.WhatsAppDesktop",
+      "WhatsApp.WhatsApp"
     )
     
     $removed = @()
@@ -81,7 +84,52 @@
       Write-Output "No bloatware found to remove"
     }
   register: bloatware_removal
-  changed_when: bloatware_removal.stdout | default('') | regex_search('Removed apps')
+  changed_when: bloatware_removal.stdout | default('') | regex_search('Removed apps') | bool
+
+- name: Uninstall WhatsApp Desktop completely
+  ansible.windows.win_shell: |
+    $removed = @()
+    
+    # Uninstall WhatsApp via Programs and Features
+    $whatsappUninstallers = @(
+      "$env:LOCALAPPDATA\WhatsApp\Update.exe",
+      "$env:LOCALAPPDATA\Programs\WhatsApp\Update.exe"
+    )
+    
+    foreach ($uninstaller in $whatsappUninstallers) {
+      if (Test-Path $uninstaller) {
+        Start-Process -FilePath $uninstaller -ArgumentList "--uninstall","-s" -Wait -NoNewWindow -ErrorAction SilentlyContinue
+        $removed += "Uninstalled WhatsApp via: $uninstaller"
+      }
+    }
+    
+    # Remove WhatsApp folders
+    $whatsappPaths = @(
+      "$env:LOCALAPPDATA\WhatsApp",
+      "$env:LOCALAPPDATA\Programs\WhatsApp",
+      "$env:APPDATA\WhatsApp",
+      "$env:ProgramFiles\WindowsApps\*WhatsApp*"
+    )
+    
+    foreach ($path in $whatsappPaths) {
+      if (Test-Path $path) {
+        Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
+        $removed += $path
+      }
+    }
+    
+    # Remove WhatsApp shortcuts
+    Get-ChildItem "C:\Users\*\Desktop" -Filter "*WhatsApp*.lnk" -ErrorAction SilentlyContinue | Remove-Item -Force
+    Get-ChildItem "C:\Users\*\Desktop" -Filter "*WhatsApp*.url" -ErrorAction SilentlyContinue | Remove-Item -Force
+    Get-ChildItem "C:\Users\*\AppData\Roaming\Microsoft\Windows\Start Menu\Programs" -Filter "*WhatsApp*" -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force
+    
+    if ($removed.Count -gt 0) {
+      Write-Output "Removed WhatsApp from: $($removed -join ', ')"
+    } else {
+      Write-Output "No WhatsApp installation found"
+    }
+  register: whatsapp_removal
+  changed_when: whatsapp_removal.stdout | default('') | regex_search('Removed WhatsApp') | bool
 
 - name: Uninstall Roblox Studio and Player via registry/filesystem
   ansible.windows.win_shell: |
@@ -129,7 +177,7 @@
       Write-Output "No Roblox installation found"
     }
   register: roblox_removal
-  changed_when: roblox_removal.stdout | default('') | regex_search('Removed Roblox')
+  changed_when: roblox_removal.stdout | default('') | regex_search('Removed Roblox') | bool
 
 - name: Block Microsoft Store app installation for standard users
   ansible.windows.win_regedit:
@@ -230,7 +278,9 @@
         "RobloxCorporation.*",
         "king.com.Candy*",
         "Microsoft.Xbox*",
-        "*Gaming*"
+        "*Gaming*",
+        "5319275A.WhatsAppDesktop",
+        "WhatsApp.WhatsApp"
       )
       
       $foundApps = @()
@@ -248,14 +298,52 @@
         }
       }
       
-      # Check for Roblox in LocalAppData
+      # Check for Roblox and WhatsApp in LocalAppData
       $users = Get-ChildItem "C:\Users" -Directory
       foreach ($user in $users) {
+        # Check for Roblox
         $robloxPath = Join-Path $user.FullName "AppData\Local\Roblox"
         if (Test-Path $robloxPath) {
           Remove-Item -Path $robloxPath -Recurse -Force -ErrorAction SilentlyContinue
           $foundApps += "Removed Roblox from: $($user.Name)"
         }
+        
+        # Check for WhatsApp
+        $whatsappPath = Join-Path $user.FullName "AppData\Local\WhatsApp"
+        if (Test-Path $whatsappPath) {
+          Remove-Item -Path $whatsappPath -Recurse -Force -ErrorAction SilentlyContinue
+          $foundApps += "Removed WhatsApp from: $($user.Name)"
+        }
+        
+        # Check for bloxd.io PWA
+        $bloxdPath = Join-Path $user.FullName "AppData\Local\Programs\bloxd"
+        if (Test-Path $bloxdPath) {
+          Remove-Item -Path $bloxdPath -Recurse -Force -ErrorAction SilentlyContinue
+          $foundApps += "Removed bloxd.io from: $($user.Name)"
+        }
+      }
+      
+      # Verify hosts file blocks are still in place
+      $hostsFile = "C:\Windows\System32\drivers\etc\hosts"
+      $requiredBlocks = @(
+        "127.0.0.1 bloxd.io",
+        "127.0.0.1 roblox.com",
+        "127.0.0.1 web.whatsapp.com"
+      )
+      
+      $hostsContent = Get-Content $hostsFile -ErrorAction SilentlyContinue
+      $hostsModified = $false
+      
+      foreach ($block in $requiredBlocks) {
+        if ($hostsContent -notcontains $block) {
+          Add-Content -Path $hostsFile -Value $block
+          $foundApps += "Re-added hosts block: $block"
+          $hostsModified = $true
+        }
+      }
+      
+      if ($hostsModified) {
+        ipconfig /flushdns | Out-Null
       }
       
       # Log results
@@ -283,6 +371,146 @@
     state: present
     enabled: yes
 
+- name: Block gaming and social media sites via hosts file
+  community.windows.win_lineinfile:
+    path: C:\Windows\System32\drivers\etc\hosts
+    line: "{{ item }}"
+    create: no
+    state: present
+  loop:
+    # Gaming sites
+    - "127.0.0.1 bloxd.io"
+    - "127.0.0.1 www.bloxd.io"
+    - "127.0.0.1 roblox.com"
+    - "127.0.0.1 www.roblox.com"
+    - "127.0.0.1 web.roblox.com"
+    - "127.0.0.1 now.gg"
+    - "127.0.0.1 www.now.gg"
+    - "127.0.0.1 krunker.io"
+    - "127.0.0.1 www.krunker.io"
+    - "127.0.0.1 poki.com"
+    - "127.0.0.1 www.poki.com"
+    - "127.0.0.1 crazygames.com"
+    - "127.0.0.1 www.crazygames.com"
+    - "127.0.0.1 miniclip.com"
+    - "127.0.0.1 www.miniclip.com"
+    - "127.0.0.1 y8.com"
+    - "127.0.0.1 www.y8.com"
+    - "127.0.0.1 friv.com"
+    - "127.0.0.1 www.friv.com"
+    - "127.0.0.1 addictinggames.com"
+    - "127.0.0.1 www.addictinggames.com"
+    # Social media sites
+    - "127.0.0.1 web.whatsapp.com"
+    - "127.0.0.1 www.whatsapp.com"
+    - "127.0.0.1 whatsapp.com"
+    - "127.0.0.1 snapchat.com"
+    - "127.0.0.1 www.snapchat.com"
+    - "127.0.0.1 tiktok.com"
+    - "127.0.0.1 www.tiktok.com"
+    - "127.0.0.1 instagram.com"
+    - "127.0.0.1 www.instagram.com"
+    - "127.0.0.1 facebook.com"
+    - "127.0.0.1 www.facebook.com"
+    - "127.0.0.1 messenger.com"
+    - "127.0.0.1 www.messenger.com"
+
+- name: Add comment header to hosts file blocked entries
+  community.windows.win_lineinfile:
+    path: C:\Windows\System32\drivers\etc\hosts
+    line: "# Blocked by parental controls - managed by Ansible"
+    insertbefore: "127.0.0.1 bloxd.io"
+    create: no
+    state: present
+
+- name: Uninstall bloxd.io and gaming browser extensions
+  ansible.windows.win_shell: |
+    $removed = @()
+    
+    # Remove bloxd.io PWA (Progressive Web App) if installed
+    $bloxdPaths = @(
+      "$env:LOCALAPPDATA\Programs\bloxd",
+      "$env:LOCALAPPDATA\bloxd.io",
+      "$env:APPDATA\bloxd.io"
+    )
+    
+    foreach ($path in $bloxdPaths) {
+      if (Test-Path $path) {
+        Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
+        $removed += "Removed bloxd.io app from: $path"
+      }
+    }
+    
+    # Remove from Chrome extensions and PWAs
+    Get-ChildItem "C:\Users\*\AppData\Local\Google\Chrome\User Data\Default\Extensions" -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+      if ($_.Name -like "*bloxd*" -or $_.Name -like "*roblox*" -or $_.Name -like "*game*") {
+        Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+        $removed += "Chrome extension: $($_.Name)"
+      }
+    }
+    
+    # Remove Chrome PWAs (Web Apps)
+    Get-ChildItem "C:\Users\*\AppData\Local\Google\Chrome\User Data\Default\Web Applications" -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+      $manifestPath = Join-Path $_.FullName "Manifest"
+      if (Test-Path $manifestPath) {
+        $content = Get-Content $manifestPath -Raw -ErrorAction SilentlyContinue
+        if ($content -match "bloxd|roblox") {
+          Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+          $removed += "Chrome PWA: $($_.Name)"
+        }
+      }
+    }
+    
+    # Remove from Edge extensions and PWAs
+    Get-ChildItem "C:\Users\*\AppData\Local\Microsoft\Edge\User Data\Default\Extensions" -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+      if ($_.Name -like "*bloxd*" -or $_.Name -like "*roblox*" -or $_.Name -like "*game*") {
+        Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+        $removed += "Edge extension: $($_.Name)"
+      }
+    }
+    
+    # Remove from Firefox extensions (already blocked by firefox-lockdown role, but clean up existing)
+    Get-ChildItem "C:\Users\*\AppData\Roaming\Mozilla\Firefox\Profiles\*\extensions" -ErrorAction SilentlyContinue | ForEach-Object {
+      if ($_.Name -match "bloxd|roblox") {
+        Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+        $removed += "Firefox extension: $($_.Name)"
+      }
+    }
+    
+    # Clear all gaming-related shortcuts from desktop and start menu
+    $shortcuts = @("*bloxd*", "*roblox*", "*game*", "*krunker*", "*now.gg*")
+    foreach ($pattern in $shortcuts) {
+      # Desktop shortcuts
+      Get-ChildItem "C:\Users\*\Desktop" -Filter "$pattern.lnk" -ErrorAction SilentlyContinue | ForEach-Object {
+        Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
+        $removed += "Desktop shortcut: $($_.Name)"
+      }
+      Get-ChildItem "C:\Users\*\Desktop" -Filter "$pattern.url" -ErrorAction SilentlyContinue | ForEach-Object {
+        Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
+        $removed += "Desktop URL: $($_.Name)"
+      }
+      
+      # Start Menu shortcuts
+      Get-ChildItem "C:\Users\*\AppData\Roaming\Microsoft\Windows\Start Menu\Programs" -Filter "$pattern*" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+        Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+        $removed += "Start Menu: $($_.Name)"
+      }
+    }
+    
+    if ($removed.Count -gt 0) {
+      Write-Output "Removed items: $($removed -join ', ')"
+    } else {
+      Write-Output "No gaming extensions or apps found"
+    }
+  register: extension_removal
+  changed_when: extension_removal.stdout | default('') | regex_search('Removed items') | bool
+
+- name: Flush DNS cache to apply hosts file changes
+  ansible.windows.win_shell: |
+    ipconfig /flushdns
+    Write-Output "DNS cache flushed successfully"
+  changed_when: false
+
 - name: Display bloatware removal summary
   debug:
     msg: |
@@ -290,20 +518,34 @@
       ========================================
       ✅ Common bloatware uninstalled
       ✅ Roblox Studio and Player removed
+      ✅ WhatsApp Desktop completely removed
+      ✅ bloxd.io PWA and extensions removed
       ✅ Microsoft Store disabled for standard users
       ✅ Software Restriction Policy enhanced
       ✅ Download folder execution blocked
       ✅ Daily monitoring scheduled
+      ✅ Gaming sites blocked in hosts file
+      ✅ Social media sites blocked in hosts file
       
       Blocked Applications:
       - Roblox Studio/Player
+      - WhatsApp Desktop
+      - bloxd.io (PWA and extensions)
       - Candy Crush games
       - Xbox apps
       - Other gaming platforms
+      
+      Blocked Websites:
+      - bloxd.io, roblox.com, now.gg
+      - krunker.io, poki.com, crazygames.com
+      - miniclip.com, y8.com, friv.com
+      - WhatsApp Web, TikTok, Instagram
+      - Facebook, Messenger, Snapchat
       
       Users cannot:
       - Install apps from Microsoft Store
       - Run executables from Downloads folder
       - Install unauthorized gaming software
+      - Access blocked gaming and social media sites
       
       Daily monitoring will automatically remove any unauthorized software.

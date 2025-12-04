@@ -74,7 +74,7 @@
 
 - name: Remove all Firefox extensions from user profiles
   ansible.windows.win_shell: |
-    $profilesJson = '{{ firefox_profiles.stdout | regex_replace('\n', '') }}'
+    $profilesJson = '{{ firefox_profiles.stdout | default("[]") | regex_replace('\n', '') }}'
     if ($profilesJson -and $profilesJson -ne '[]') {
       $profiles = $profilesJson | ConvertFrom-Json
       if ($profiles) {
@@ -105,11 +105,11 @@
       Write-Output "No Firefox profiles found"
     }
   register: remove_extensions
-  changed_when: remove_extensions.stdout | default('') | regex_search('Removed')
+  changed_when: remove_extensions.stdout | default('') | regex_search('Removed') | bool
 
 - name: Lock Firefox preferences via user.js (additional protection)
   ansible.windows.win_shell: |
-    $profilesJson = '{{ firefox_profiles.stdout | regex_replace('\n', '') }}'
+    $profilesJson = '{{ firefox_profiles.stdout | default("[]") | regex_replace('\n', '') }}'
     if ($profilesJson -and $profilesJson -ne '[]') {
       $profiles = $profilesJson | ConvertFrom-Json
       if ($profiles) {
@@ -128,7 +128,7 @@
       }
     }
   register: user_js_result
-  changed_when: user_js_result.stdout | default('') | regex_search('Created')
+  changed_when: user_js_result.stdout | default('') | regex_search('Created') | bool
 
 - name: Set registry to prevent Firefox profile customization
   ansible.windows.win_regedit:
