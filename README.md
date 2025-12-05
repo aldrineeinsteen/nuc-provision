@@ -24,11 +24,26 @@ Please ensure:
 ## Features for Children's Computers
 
 ### 🛡️ Security & Safety
+- **Maximum UAC Level**: Set to "Always Notify" - prevents silent privilege elevation even for admins
+- **USB Protection**: Autorun/Autoplay completely disabled to prevent malware from USB drives
 - **Software Restriction Policy (SRP)**: Prevents installation of unauthorized software
 - **Bloatware removal**: Automatically removes unwanted pre-installed software
 - **Gaming software blocking**: Prevents installation of Roblox, gaming platforms, etc.
 - **Microsoft Store restrictions**: Blocks app installation for standard users
 - **Firefox lockdown**: Prevents extension installation and modifications
+- **PowerShell Hardening**: 
+  - Script Block Logging enabled
+  - Full transcription to C:\Windows\Logs\PowerShell
+  - Module logging enabled
+  - RemoteSigned execution policy
+- **Comprehensive Auditing**: 
+  - Process creation with command line logging
+  - User account management monitoring
+  - Policy change detection
+  - Logon/Logoff tracking
+  - Privilege use monitoring
+- **Disabled Services**: Fax, Remote Registry, Windows Error Reporting
+- **Password Policy**: Minimum 8 chars, 90-day expiry, lockout after 5 failures
 - **Non-admin user accounts**: Standard user privileges for daily use
 - **Family Safety policies**: Age-appropriate content filtering
 - **SmartScreen protection**: Warns against malicious downloads
@@ -368,13 +383,77 @@ ansible-playbook -i inventory.yml site.yml --tags housekeeping --extra-vars "ena
 - **Cloud sync**: Configure OneDrive or similar for document safety
 - **System restore points**: Create weekly system restore points
 
+## Advanced Security Features
+
+### 🔐 User Account Control (UAC)
+- **Maximum Level Enforced**: Set to "Always Notify"
+- **Applies to ALL users**: Including local administrators
+- **Secure Desktop**: Prompts appear on isolated desktop
+- **No Silent Elevation**: Every privilege escalation requires explicit approval
+
+### 🛡️ PowerShell Security
+- **Script Block Logging**: All PowerShell script blocks are logged
+- **Transcription**: Full session recording to `C:\Windows\Logs\PowerShell`
+- **Module Logging**: Tracks all module usage
+- **Execution Policy**: RemoteSigned (only signed scripts from internet)
+- **Prevents malicious scripts** while allowing legitimate administration
+
+### 📊 Comprehensive Auditing
+All security-relevant events are logged to Windows Security Event Log (1GB size):
+
+**Process Auditing:**
+- Every executable launched is logged with full command line
+- Process termination tracking
+- Helps detect malware and unauthorized software
+
+**Account Management:**
+- User account creation/modification/deletion
+- Security group changes
+- Account lockout events
+
+**Policy Changes:**
+- Detects attempts to modify security policies
+- Tracks authentication policy changes
+- Monitors authorization policy modifications
+
+**Access Tracking:**
+- Successful and failed logon attempts
+- Special logon (administrator) tracking
+- Sensitive privilege use monitoring
+
+**Log Files Located:**
+- Security logs: `Event Viewer → Windows Logs → Security`
+- PowerShell logs: `C:\Windows\Logs\PowerShell`
+- Application logs: `Event Viewer → Windows Logs → Application`
+
+### 🔒 USB and Removable Media Protection
+- **Autorun Disabled**: Prevents automatic execution from USB drives
+- **Autoplay Blocked**: No automatic media playing
+- **All Drive Types**: Protection applies to USB, CD/DVD, network drives
+- **Prevents** common malware infection vector
+
+### ⚙️ Service Hardening
+**Disabled Unnecessary Services:**
+- **Fax Service**: Not needed for children's computers
+- **Remote Registry**: Prevents remote registry manipulation
+- **Windows Error Reporting**: Reduces attack surface
+
+### 🔑 Password Policy
+- **Minimum Length**: 8 characters
+- **Maximum Age**: 90 days (forced rotation)
+- **Lockout Threshold**: 5 failed attempts
+- **Lockout Duration**: 30 minutes
+- **Complexity**: Enforced by Windows policy
+
 ## Security Best Practices for Families
 
-1. **Regular password rotation**: Change passwords every 90 days
+1. **Regular password rotation**: Change passwords every 90 days (enforced automatically)
 2. **Two-factor authentication**: Enable where possible
 3. **Regular updates**: Keep all software current (automated via Chocolatey)
-4. **Monitoring**: Check system logs and activity regularly
-5. **Education**: Teach children about online safety
+4. **Monitoring**: Check security event logs regularly
+5. **Review PowerShell logs**: Check `C:\Windows\Logs\PowerShell` for suspicious activity
+6. **Education**: Teach children about online safety
+7. **Audit logs**: Periodically review Event Viewer → Security logs
 
 ## Troubleshooting
 

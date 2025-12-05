@@ -108,6 +108,238 @@
     data: 1
     type: dword
 
+# ---- Maximum UAC Level (Always Notify) ----
+- name: Set UAC to maximum level - Always notify for admins
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    name: ConsentPromptBehaviorAdmin
+    data: 2
+    type: dword
+
+- name: Set UAC to maximum level - Prompt for credentials for standard users
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    name: ConsentPromptBehaviorUser
+    data: 1
+    type: dword
+
+- name: Enable UAC for all administrators
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    name: EnableLUA
+    data: 1
+    type: dword
+
+- name: Elevate prompt for administrators in Admin Approval Mode
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    name: FilterAdministratorToken
+    data: 1
+    type: dword
+
+# ---- Block USB Autorun/Autoplay ----
+- name: Disable Autorun for all drives
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer
+    name: NoDriveTypeAutoRun
+    data: 255
+    type: dword
+
+- name: Disable Autoplay for all users
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer
+    name: NoAutoplayfornonVolume
+    data: 1
+    type: dword
+
+- name: Turn off Autoplay completely
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\policies\Explorer
+    name: NoDriveAutoRun
+    data: 67108863
+    type: dword
+
+# ---- Disable Unnecessary Services ----
+- name: Disable Fax service
+  ansible.windows.win_service:
+    name: Fax
+    state: stopped
+    start_mode: disabled
+  failed_when: false
+
+- name: Disable Remote Registry service
+  ansible.windows.win_service:
+    name: RemoteRegistry
+    state: stopped
+    start_mode: disabled
+  failed_when: false
+
+- name: Disable Windows Error Reporting service
+  ansible.windows.win_service:
+    name: WerSvc
+    state: stopped
+    start_mode: disabled
+  failed_when: false
+
+# ---- Harden PowerShell Execution ----
+- name: Set PowerShell execution policy via group policy registry (RemoteSigned)
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell
+    name: ExecutionPolicy
+    data: RemoteSigned
+    type: string
+    state: present
+  tags:
+    - security
+    - powershell
+
+- name: Enable PowerShell Script Block Logging
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging
+    name: EnableScriptBlockLogging
+    data: 1
+    type: dword
+
+- name: Enable PowerShell Transcription
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription
+    name: EnableTranscripting
+    data: 1
+    type: dword
+
+- name: Set PowerShell Transcription output directory
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription
+    name: OutputDirectory
+    data: "C:\\Windows\\Logs\\PowerShell"
+    type: string
+
+- name: Enable invocation header for PowerShell Transcription
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription
+    name: EnableInvocationHeader
+    data: 1
+    type: dword
+
+- name: Enable PowerShell Module Logging
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ModuleLogging
+    name: EnableModuleLogging
+    data: 1
+    type: dword
+
+- name: Create PowerShell logs directory
+  ansible.windows.win_file:
+    path: C:\Windows\Logs\PowerShell
+    state: directory
+
+# ---- Enable Comprehensive Windows Security Auditing ----
+- name: Enable audit process creation
+  ansible.windows.win_shell: |
+    auditpol /set /subcategory:"Process Creation" /success:enable /failure:enable
+  changed_when: false
+
+- name: Enable audit process termination
+  ansible.windows.win_shell: |
+    auditpol /set /subcategory:"Process Termination" /success:enable /failure:enable
+  changed_when: false
+
+- name: Enable audit user account management
+  ansible.windows.win_shell: |
+    auditpol /set /subcategory:"User Account Management" /success:enable /failure:enable
+  changed_when: false
+
+- name: Enable audit security group management
+  ansible.windows.win_shell: |
+    auditpol /set /subcategory:"Security Group Management" /success:enable /failure:enable
+  changed_when: false
+
+- name: Enable audit policy change
+  ansible.windows.win_shell: |
+    auditpol /set /subcategory:"Audit Policy Change" /success:enable /failure:enable
+  changed_when: false
+
+- name: Enable audit authentication policy change
+  ansible.windows.win_shell: |
+    auditpol /set /subcategory:"Authentication Policy Change" /success:enable /failure:enable
+  changed_when: false
+
+- name: Enable audit authorization policy change
+  ansible.windows.win_shell: |
+    auditpol /set /subcategory:"Authorization Policy Change" /success:enable /failure:enable
+  changed_when: false
+
+- name: Enable audit logon/logoff
+  ansible.windows.win_shell: |
+    auditpol /set /subcategory:"Logon" /success:enable /failure:enable
+    auditpol /set /subcategory:"Logoff" /success:enable
+  changed_when: false
+
+- name: Enable audit account lockout
+  ansible.windows.win_shell: |
+    auditpol /set /subcategory:"Account Lockout" /success:enable /failure:enable
+  changed_when: false
+
+- name: Enable audit special logon
+  ansible.windows.win_shell: |
+    auditpol /set /subcategory:"Special Logon" /success:enable /failure:enable
+  changed_when: false
+
+- name: Enable audit sensitive privilege use
+  ansible.windows.win_shell: |
+    auditpol /set /subcategory:"Sensitive Privilege Use" /success:enable /failure:enable
+  changed_when: false
+
+- name: Enable command line auditing in process creation events
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit
+    name: ProcessCreationIncludeCmdLine_Enabled
+    data: 1
+    type: dword
+
+- name: Increase Security Event Log size to 1GB
+  ansible.windows.win_shell: |
+    wevtutil sl Security /ms:1073741824
+  changed_when: false
+
+- name: Increase System Event Log size to 512MB
+  ansible.windows.win_shell: |
+    wevtutil sl System /ms:536870912
+  changed_when: false
+
+- name: Increase Application Event Log size to 512MB
+  ansible.windows.win_shell: |
+    wevtutil sl Application /ms:536870912
+  changed_when: false
+
+# ---- Additional Security Hardening ----
+- name: Disable Windows Script Host for standard users
+  ansible.windows.win_regedit:
+    path: HKCU:\SOFTWARE\Microsoft\Windows Script Host\Settings
+    name: Enabled
+    data: 0
+    type: dword
+
+- name: Require strong passwords (minimum 8 characters)
+  ansible.windows.win_shell: |
+    net accounts /minpwlen:8
+  changed_when: false
+
+- name: Set maximum password age to 90 days
+  ansible.windows.win_shell: |
+    net accounts /maxpwage:90
+  changed_when: false
+
+- name: Set account lockout threshold to 5 failed attempts
+  ansible.windows.win_shell: |
+    net accounts /lockoutthreshold:5
+  changed_when: false
+
+- name: Set account lockout duration to 30 minutes
+  ansible.windows.win_shell: |
+    net accounts /lockoutduration:30
+  changed_when: false
+
 # ---- Hide key Security/Settings pages for standard users (optional hardening) ----
 - name: Hide Windows Security app (standard users)
   ansible.windows.win_regedit:
@@ -115,3 +347,31 @@
     name: DisableEnhancedNotifications
     data: 1
     type: dword
+
+- name: Display security hardening summary
+  debug:
+    msg: |
+      Security Hardening Applied Successfully!
+      ======================================
+      ✅ UAC set to maximum level (Always Notify)
+      ✅ USB Autorun/Autoplay completely disabled
+      ✅ Unnecessary services disabled (Fax, Remote Registry, WER)
+      ✅ PowerShell hardened with:
+         - Script Block Logging enabled
+         - Transcription enabled (logs in C:\Windows\Logs\PowerShell)
+         - Module Logging enabled
+         - Execution policy set to RemoteSigned
+      ✅ Comprehensive auditing enabled:
+         - Process creation with command line logging
+         - User account management
+         - Policy changes
+         - Logon/Logoff events
+         - Privilege use
+      ✅ Event log sizes increased (Security: 1GB, System/App: 512MB)
+      ✅ Password policy enforced:
+         - Minimum 8 characters
+         - Maximum age 90 days
+         - Lockout after 5 failed attempts
+         - 30 minute lockout duration
+      
+      All activities are now comprehensively logged and monitored!

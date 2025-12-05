@@ -135,22 +135,51 @@
   ansible.windows.win_shell: |
     $removed = @()
     
-    # Find and uninstall Roblox Studio
+    # Kill any running Roblox processes first
+    Get-Process | Where-Object { $_.ProcessName -like "*Roblox*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+    
+    # Method 1: Use Windows Uninstaller Registry
+    $uninstallKeys = @(
+      "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+      "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+      "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    )
+    
+    foreach ($key in $uninstallKeys) {
+      Get-ItemProperty $key -ErrorAction SilentlyContinue | Where-Object { 
+        $_.DisplayName -like "*Roblox*" 
+      } | ForEach-Object {
+        $uninstallString = $_.UninstallString
+        if ($uninstallString) {
+          Write-Output "Running uninstaller: $uninstallString"
+          if ($uninstallString -match '"([^"]+)"') {
+            $exe = $matches[1]
+            Start-Process -FilePath $exe -ArgumentList "/S" -Wait -NoNewWindow -ErrorAction SilentlyContinue
+          } else {
+            Start-Process -FilePath "cmd.exe" -ArgumentList "/c $uninstallString /S" -Wait -NoNewWindow -ErrorAction SilentlyContinue
+          }
+          $removed += "Registry uninstaller: $($_.DisplayName)"
+        }
+      }
+    }
+    
+    # Method 2: Find and remove Roblox directories
     $robloxPaths = @(
       "$env:LOCALAPPDATA\Roblox",
       "$env:ProgramFiles\Roblox",
-      "$env:ProgramFiles(x86)\Roblox"
+      "$env:ProgramFiles(x86)\Roblox",
+      "$env:APPDATA\Roblox"
     )
     
     foreach ($path in $robloxPaths) {
       if (Test-Path $path) {
-        # Try to run uninstaller if it exists
-        $uninstallers = Get-ChildItem -Path $path -Filter "RobloxStudio*.exe" -Recurse -ErrorAction SilentlyContinue
-        foreach ($uninstaller in $uninstallers) {
-          if ($uninstaller.Name -like "*uninstall*") {
-            Start-Process -FilePath $uninstaller.FullName -ArgumentList "/S" -Wait -NoNewWindow -ErrorAction SilentlyContinue
+        # Try to run any uninstaller executables first
+        Get-ChildItem -Path $path -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue | 
+          Where-Object { $_.Name -like "*uninstall*" -or $_.Name -like "*Roblox*Uninstaller*" } | 
+          ForEach-Object {
+            Write-Output "Running $($_.FullName)"
+            Start-Process -FilePath $_.FullName -ArgumentList "/S" -Wait -NoNewWindow -ErrorAction SilentlyContinue
           }
-        }
         
         # Force remove directory
         Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
@@ -158,18 +187,47 @@
       }
     }
     
-    # Remove Roblox from all user profiles
-    Get-ChildItem "C:\Users" -Directory | ForEach-Object {
-      $userRoblox = Join-Path $_.FullName "AppData\Local\Roblox"
-      if (Test-Path $userRoblox) {
-        Remove-Item -Path $userRoblox -Recurse -Force -ErrorAction SilentlyContinue
-        $removed += $userRoblox
+    # Method 3: Remove from all user profiles
+    Get-ChildItem "C:\Users" -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+      $userPaths = @(
+        (Join-Path $_.FullName "AppData\Local\Roblox"),
+        (Join-Path $_.FullName "AppData\Roaming\Roblox"),
+        (Join-Path $_.FullName "AppData\LocalLow\Roblox")
+      )
+      
+      foreach ($userPath in $userPaths) {
+        if (Test-Path $userPath) {
+          Remove-Item -Path $userPath -Recurse -Force -ErrorAction SilentlyContinue
+          $removed += $userPath
+        }
       }
     }
     
-    # Remove desktop shortcuts
-    Get-ChildItem "C:\Users\*\Desktop" -Filter "*Roblox*.lnk" -ErrorAction SilentlyContinue | Remove-Item -Force
-    Get-ChildItem "C:\Users\*\Desktop" -Filter "*Roblox*.url" -ErrorAction SilentlyContinue | Remove-Item -Force
+    # Method 4: Remove shortcuts and Start Menu entries
+    $shortcutPaths = @(
+      "C:\Users\*\Desktop\*Roblox*.lnk",
+      "C:\Users\*\Desktop\*Roblox*.url",
+      "C:\Users\*\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\*Roblox*.lnk",
+      "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\*Roblox*.lnk"
+    )
+    
+    foreach ($pattern in $shortcutPaths) {
+      Get-ChildItem $pattern -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+    }
+    
+    # Method 5: Clean registry entries
+    $regPaths = @(
+      "HKCU:\Software\Roblox",
+      "HKLM:\Software\Roblox",
+      "HKLM:\Software\WOW6432Node\Roblox"
+    )
+    
+    foreach ($regPath in $regPaths) {
+      if (Test-Path $regPath) {
+        Remove-Item -Path $regPath -Recurse -Force -ErrorAction SilentlyContinue
+        $removed += $regPath
+      }
+    }
     
     if ($removed.Count -gt 0) {
       Write-Output "Removed Roblox from: $($removed -join ', ')"
@@ -178,6 +236,37 @@
     }
   register: roblox_removal
   changed_when: roblox_removal.stdout | default('') | regex_search('Removed Roblox') | bool
+
+- name: Remove Roblox from target user's AppData ({{ target_username }})
+  ansible.windows.win_shell: >-
+    $targetUser = '{{ target_username }}';
+    $removed = @();
+    Get-Process -IncludeUserName -ErrorAction SilentlyContinue |
+    Where-Object { $_.UserName -like "*\$targetUser" -and $_.ProcessName -like "*Roblox*" } |
+    Stop-Process -Force -ErrorAction SilentlyContinue;
+    $userProfile = Get-ChildItem "C:\Users" -Directory | Where-Object { $_.Name -eq $targetUser } | Select-Object -First 1;
+    if ($userProfile) {
+      $userPaths = @(
+        (Join-Path $userProfile.FullName "AppData\Local\Roblox"),
+        (Join-Path $userProfile.FullName "AppData\Roaming\Roblox"),
+        (Join-Path $userProfile.FullName "AppData\LocalLow\Roblox")
+      );
+      foreach ($basePath in $userPaths) {
+        if (Test-Path $basePath) {
+          Write-Output "Removing: $basePath";
+          Remove-Item -Path $basePath -Recurse -Force -ErrorAction SilentlyContinue;
+          $removed += $basePath;
+        }
+      };
+      Get-ChildItem (Join-Path $userProfile.FullName "Desktop") -Filter "*Roblox*" -ErrorAction SilentlyContinue |
+      ForEach-Object { Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue; $removed += $_.FullName };
+      Get-ChildItem (Join-Path $userProfile.FullName "AppData\Roaming\Microsoft\Windows\Start Menu\Programs") -Filter "*Roblox*" -Recurse -ErrorAction SilentlyContinue |
+      ForEach-Object { Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue; $removed += $_.FullName };
+      if ($removed.Count -gt 0) { Write-Output "Cleaned $($removed.Count) Roblox items for user $targetUser" }
+      else { Write-Output "No Roblox items found for user $targetUser" }
+    } else { Write-Output "User profile not found for: $targetUser" }
+  register: target_user_roblox_removal
+  changed_when: target_user_roblox_removal.stdout | default('') | regex_search('Cleaned .* Roblox items') | bool
 
 - name: Block Microsoft Store app installation for standard users
   ansible.windows.win_regedit:
@@ -414,6 +503,8 @@
     - "127.0.0.1 www.facebook.com"
     - "127.0.0.1 messenger.com"
     - "127.0.0.1 www.messenger.com"
+    - "127.0.0.1 www.youtube.com"
+    - "127.0.0.1 youtube.com"
 
 - name: Add comment header to hosts file blocked entries
   community.windows.win_lineinfile:
